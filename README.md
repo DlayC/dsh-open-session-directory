@@ -26,6 +26,23 @@ Two rows in every Session's `...` menu in the sidebar:
   Host refusal raises one transient notice from `shell.overlay` naming the path
   and the reason.
 
+## Per-row switches on the Plugins page
+
+Clicking the bundle on **Plugins → Installed plugins** opens its page, which
+renders this package's configuration card between the description and the rows:
+one switch for each Session menu row.
+
+| Config field | Default | Effect |
+|---|---|---|
+| `workspaceRow` | `true` | shows/hides **在资源管理器中打开工作区** |
+| `recordsRow` | `true` | shows/hides **在资源管理器中打开会话记录** |
+| `sessionsRoot` | `$DSH_HOME/sessions` | root the records row derives its folder from |
+
+The card is the `plugins.bundle.config` slot keyed by the package name; it reads
+and writes the same row Config the Client menu rows read, so a change applies to
+the open page without a reload. Turning a row off only hides it — the menu item
+and its click path stay loaded.
+
 The Host half owns no state, process handling, or file I/O.
 
 ## Development

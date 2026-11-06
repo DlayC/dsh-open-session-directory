@@ -91,6 +91,16 @@ function volatileField(field) {
 const DEFAULT_SESSIONS_ROOT = join(resolveDshHome(), 'sessions');
 
 export const Config = z === undefined ? undefined : z.object({
+  workspaceRow: volatileField(z.boolean().default(true)
+    .description(
+      '在会话菜单里显示「在资源管理器中打开工作区」/ '
+      + 'Show "Open Workspace in File Explorer" in the Session menu',
+    )),
+  recordsRow: volatileField(z.boolean().default(true)
+    .description(
+      '在会话菜单里显示「在资源管理器中打开会话记录」/ '
+      + 'Show "Open Session Records in File Explorer" in the Session menu',
+    )),
   sessionsRoot: volatileField(z.string().default(DEFAULT_SESSIONS_ROOT)
     .description(
       '会话日志根目录，用来定位每个会话在磁盘上的记录文件夹；默认 $DSH_HOME/sessions / '

@@ -1,6 +1,6 @@
 {
   "name": "dsh-open-session-folder",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Adds two rows to every Session's ... menu: open the Session's working folder, and open its on-disk record folder under the session-log root.",
   "type": "module",

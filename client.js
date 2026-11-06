@@ -57,6 +57,17 @@ window.__ModuleLoader__.load({
       noFolder: '这个会话还没有本地工作目录，没有可以打开的文件夹。',
       noRoot: '没有读到会话日志根目录（sessionsRoot 配置缺失），无法定位这个会话的记录文件夹。',
       failed: '打不开这个文件夹：',
+      cardTitle: '会话菜单显示项',
+      cardHint: '关闭某一项之后，这个会话的“…”菜单里不再出现对应的一行。',
+      workspaceRowLabel: '在资源管理器中打开工作区',
+      workspaceRowHint: '在会话菜单里显示“在资源管理器中打开工作区”。',
+      recordsRowLabel: '在资源管理器中打开会话记录',
+      recordsRowHint: '在会话菜单里显示“在资源管理器中打开会话记录”。',
+      summary: '会话菜单显示项',
+      saved: '已保存。',
+      working: '处理中…',
+      persistFailed: '宿主没有确认这次修改，请稍后重试。',
+      unavailable: '当前部署没有可写的设置通道，无法修改。',
     };
 
     const en = {
@@ -66,6 +77,17 @@ window.__ModuleLoader__.load({
       noFolder: 'This session has no working directory yet, so there is no folder to open.',
       noRoot: 'The session-log root is unavailable (no sessionsRoot value), so this session\'s record folder cannot be located.',
       failed: 'Could not open this folder:',
+      cardTitle: 'Session menu rows',
+      cardHint: 'Turning a row off removes it from each Session\'s "..." menu.',
+      workspaceRowLabel: 'Open Workspace in File Explorer',
+      workspaceRowHint: 'Show "Open Workspace in File Explorer" in the Session menu.',
+      recordsRowLabel: 'Open Session Records in File Explorer',
+      recordsRowHint: 'Show "Open Session Records in File Explorer" in the Session menu.',
+      summary: 'Session menu rows',
+      saved: 'Saved.',
+      working: 'Working…',
+      persistFailed: 'The host did not confirm the change; try again.',
+      unavailable: 'This deployment has no writable settings channel.',
     };
 
     const ROW_CSS = `
@@ -112,6 +134,37 @@ window.__ModuleLoader__.load({
   z-index: 60;
 }
 `;
+
+    /** The Plugins page card: host row geometry, switch, and theme tokens. */
+    const CARD_CSS = `
+.dsh-osf-card{display:grid;gap:14px;color:var(--dsw-alias-label-primary)}
+.dsh-osf-card-title{margin:0;font-size:13px;font-weight:600}
+.dsh-osf-card-hint{margin:0;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
+.dsh-osf-rows{display:grid;gap:12px}
+.dsh-osf-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.dsh-osf-row-text{display:grid;gap:3px;font-size:13px;line-height:1.5}
+.dsh-osf-row-hint{font-size:12px;color:var(--dsw-alias-label-secondary)}
+.dsh-osf-switch{flex:none;width:36px;height:20px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);position:relative;cursor:pointer;padding:0;transition:background .15s ease}
+.dsh-osf-switch[aria-checked="true"]{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
+.dsh-osf-switch:disabled{opacity:.5;cursor:not-allowed}
+.dsh-osf-knob{position:absolute;top:1px;left:1px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s ease}
+.dsh-osf-switch[aria-checked="true"] .dsh-osf-knob{transform:translateX(16px)}
+.dsh-osf-card-message{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary)}
+.dsh-osf-card-message[data-tone="ok"]{color:var(--dsw-alias-state-success-primary)}
+.dsh-osf-card-message[data-tone="error"]{color:var(--dsw-alias-state-error-primary)}
+`;
+
+    const useStoreSnapshot = (store) => {
+      const subscribe = React.useCallback(
+        (listener) => (typeof store?.subscribe === 'function' ? store.subscribe(listener) : () => {}),
+        [store],
+      );
+      const read = React.useCallback(
+        () => (typeof store?.getSnapshot === 'function' ? store.getSnapshot() : undefined),
+        [store],
+      );
+      return React.useSyncExternalStore(subscribe, read, read);
+    };
 
     /** Same 14px outline style the host menu icons use. */
     function FallbackIcon({ kind }) {
@@ -346,6 +399,69 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Read one boolean field from a settings form snapshot.
+     * @param snapshot - the form snapshot.
+     * @param key - field name.
+     * @param fallback - value used when the store or field is unavailable.
+     * @returns the effective flag.
+     */
+    function configFlag(snapshot, key, fallback) {
+      const sources = [snapshot?.value, snapshot?.inherited, snapshot?.defaults, snapshot?.schema?.defaults];
+      for (const source of sources) {
+        if (source === null || typeof source !== 'object') continue;
+        let raw = source[key];
+        if (raw === undefined || raw === null) continue;
+        if (typeof raw?.get === 'function') raw = raw.get();
+        if (typeof raw === 'boolean') return raw;
+      }
+      return fallback;
+    }
+
+    /**
+     * Persist one boolean field through the settings service.
+     *
+     * The Host owns the document: the Client form store answers first, then the
+     * settings Remote namespace, then the store's own setter. A refusal carries
+     * its reason so the card can show it.
+     * @param transport - shared plugin state.
+     * @param key - field name.
+     * @param value - requested value.
+     * @param revision - the revision the caller read, when known.
+     * @returns nothing; throws on a refusal.
+     */
+    async function writeFlag(transport, key, value, revision) {
+      const store = transport.configStore;
+      const ops = [{ op: 'set', path: [key], value }];
+      let lastFailure;
+      if (store !== undefined && typeof store.mutate === 'function') {
+        try {
+          const result = await store.mutate(ops, revision);
+          if (result === undefined || result === null || result.ok !== false) return;
+          lastFailure = result.error?.message ?? result.error?.code;
+        } catch (error) {
+          lastFailure = String(error?.message ?? error);
+        }
+      }
+      const settings = transport.settingsRemote;
+      if (settings !== undefined && typeof settings.mutate === 'function') {
+        for (const ns of [ENTRY_ID, `include:${ENTRY_ID}`, PACKAGE]) {
+          try {
+            const result = await settings.mutate(ns, ops, revision);
+            if (result === undefined || result === null || result.ok !== false) return;
+            lastFailure = result.error?.message ?? result.error?.code;
+          } catch (error) {
+            lastFailure = String(error?.message ?? error);
+          }
+        }
+      }
+      if (store !== undefined && typeof store.set === 'function') {
+        await store.set(key, value);
+        return;
+      }
+      throw new Error(lastFailure ?? 'settings channel unavailable');
+    }
+
+    /**
      * Open one absolute path through the Host's native opener.
      * @param remote - the Client `session` Remote namespace.
      * @param path - absolute Host path.
@@ -398,6 +514,7 @@ window.__ModuleLoader__.load({
       const t = typeof props.t === 'function' ? props.t : (key) => key;
       const remote = props.transport?.sessionRemote;
       const state = useOpenable();
+      const snapshot = useStoreSnapshot(props.transport?.configStore);
       const [busy, setBusy] = React.useState(false);
 
       // The menu's own open state, bound by the owner into this occurrence.
@@ -405,7 +522,9 @@ window.__ModuleLoader__.load({
       const pair = typeof hook === 'function' ? hook() : undefined;
       const setMenuOpen = Array.isArray(pair) ? pair[1] : undefined;
 
+      const shown = configFlag(snapshot, kind === 'records' ? 'recordsRow' : 'workspaceRow', true);
       if (state.known && !state.openable) return null;
+      if (!shown) return null;
 
       const select = () => {
         if (busy) return;
@@ -459,10 +578,85 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'dsh-osf-notice', role: 'status', 'aria-live': 'polite' }, notice.text);
     }
 
+    /** The Plugins page card: one switch per Session menu row. */
+    function PluginConfigCard(props) {
+      const t = typeof props.t === 'function' ? props.t : (key) => key;
+      const transport = props.transport ?? {};
+      const store = transport.configStore;
+      const snapshot = useStoreSnapshot(store);
+      const [pending, setPending] = React.useState({});
+      const [busy, setBusy] = React.useState('');
+      const [message, setMessage] = React.useState('');
+      const [tone, setTone] = React.useState('hint');
+
+      const revision = snapshot?.revision;
+      const workspaceOn = 'workspaceRow' in pending ? pending.workspaceRow : configFlag(snapshot, 'workspaceRow', true);
+      const recordsOn = 'recordsRow' in pending ? pending.recordsRow : configFlag(snapshot, 'recordsRow', true);
+      const unavailable = store === undefined && transport.settingsRemote === undefined;
+
+      const write = async (key, next) => {
+        setBusy(key);
+        setMessage('');
+        setPending((current) => ({ ...current, [key]: next }));
+        try {
+          await writeFlag(transport, key, next, revision);
+          setMessage(t('saved'));
+          setTone('ok');
+        } catch (error) {
+          setPending((current) => {
+            const nextState = { ...current };
+            delete nextState[key];
+            return nextState;
+          });
+          setMessage(`${t('persistFailed')} ${String(error?.message ?? error)}`);
+          setTone('error');
+        } finally {
+          setBusy('');
+        }
+      };
+
+      const row = (key, label, hint, checked) => h('div', { key, className: 'dsh-osf-row' }, [
+        h('div', { key: 'text', className: 'dsh-osf-row-text' }, [
+          h('span', { key: 'label' }, label),
+          h('span', { key: 'hint', className: 'dsh-osf-row-hint' }, hint),
+        ]),
+        h('button', {
+          key: 'switch',
+          type: 'button',
+          role: 'switch',
+          'aria-checked': checked === true,
+          'aria-label': label,
+          className: 'dsh-osf-switch',
+          disabled: unavailable || busy !== '',
+          onClick: () => void write(key, checked !== true),
+        }, h('span', { className: 'dsh-osf-knob' })),
+      ]);
+
+      if (props.view === 'summary') return t('summary');
+
+      return h('div', { className: 'dsh-osf-card' }, [
+        h('style', { key: 'style' }, CARD_CSS),
+        h('div', { key: 'head' }, [
+          h('h3', { key: 'title', className: 'dsh-osf-card-title' }, t('cardTitle')),
+          h('p', { key: 'hint', className: 'dsh-osf-card-hint' }, t('cardHint')),
+        ]),
+        h('div', { key: 'rows', className: 'dsh-osf-rows' }, [
+          row('workspaceRow', t('workspaceRowLabel'), t('workspaceRowHint'), workspaceOn),
+          row('recordsRow', t('recordsRowLabel'), t('recordsRowHint'), recordsOn),
+        ]),
+        unavailable
+          ? h('p', { key: 'unavailable', className: 'dsh-osf-card-message', 'data-tone': 'error' }, t('unavailable'))
+          : null,
+        message === ''
+          ? null
+          : h('p', { key: 'message', className: 'dsh-osf-card-message', 'data-tone': tone, role: 'status' }, message),
+      ]);
+    }
+
     function apply(ctx) {
       ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'open-session-folder: dictionaries');
       const t = typeof ctx.locale.bind === 'function' ? ctx.locale.bind(NS) : (key) => key;
-      const transport = { sessionRemote: undefined, configStore: undefined };
+      const transport = { sessionRemote: undefined, settingsRemote: undefined, configStore: undefined };
       let registered = false;
 
       // Both rows need the Remote face; the settings store is optional because a
@@ -488,6 +682,15 @@ window.__ModuleLoader__.load({
         }, RecordsRow));
       };
 
+      // The bundle's own configuration card on the Plugins page, keyed by the
+      // package name the page dispatches.
+      ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
+        name: 'plugins.bundle.config',
+        key: PACKAGE,
+        locale: NS,
+        inject: () => ({ transport }),
+      }, PluginConfigCard));
+
       ctx.slots.inject('shell.overlay', () => ctx.slots.register({
         name: 'shell.overlay',
         id: `${NS}-notice`,
@@ -497,6 +700,10 @@ window.__ModuleLoader__.load({
       ctx.inject(['configForms'], (owner) => {
         transport.configStore = pickFormStore(owner.configForms);
         registerRows();
+      });
+
+      ctx.inject(['remote', 'remote.settings'], (owner) => {
+        transport.settingsRemote = owner.remote?.settings;
       });
 
       ctx.inject(['remote', 'remote.session'], (owner) => {
