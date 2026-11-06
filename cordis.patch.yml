@@ -1,0 +1,8 @@
+# Bundle layer for dsh-open-session-folder.
+#
+# The row exists so the package is active in the profile; the feature itself is
+# the Client half, which adds one row to every Session's "..." menu. The Host
+# half owns no state and declares no Config.
+- insert:
+    - id: open-session-folder
+      name: dsh-open-session-folder

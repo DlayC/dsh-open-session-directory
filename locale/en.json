@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Open Session Folder",
+    "description": "Adds an \"Open in File Explorer\" row to every Session's ... menu that opens the Session's working folder in the system file manager."
+  }
+}
