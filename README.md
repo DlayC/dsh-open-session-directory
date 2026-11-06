@@ -1,20 +1,36 @@
 # dsh-open-session-folder
 
-Adds one row to every Session's `...` menu in the sidebar: **在资源管理器中打开 /
-Open in File Explorer**. The click opens that Session's working directory with the
-operating system's file manager.
+Two rows in every Session's `...` menu in the sidebar:
 
-- Where the row goes: `sidebar.workspaces.session.menu.item`, `order: 425` — after
-  Archive (400), before Copy Session ID (450).
-- Which folder: the Session's working directory (`cwd`), read from the Session
-  Controller list projection. A Session without a `cwd` shows a notice instead.
-- How it opens: `session/openWorkspacePath`, the Session Controller's existing
-  native-opening endpoint, so path verification, cancellation and platform
-  differences stay with its Host owner.
-- Availability: the row hides when `session/canOpenWorkspacePath` reports that
-  this deployment has no native opener (for example a plain remote browser).
-- A failed open, or a Session with no folder, raises one transient notice from
-  `shell.overlay`; the shipped `workspace.toast` channel has a closed key set and
-  is not extended by plugins.
+| Row | Opens |
+|---|---|
+| **在资源管理器中打开工作区** / **Open Workspace in File Explorer** | the Session's working directory (`cwd`) |
+| **在资源管理器中打开会话记录** / **Open Session Records in File Explorer** | the Session's own folder under the session-log root |
 
-The Host half is a row only: it owns no state, Config, or process handling.
+- Both live in `sidebar.workspaces.session.menu.item`: `order 425` (working
+  folder) and `435` (records), after Archive (400) and before Copy Session ID
+  (450), using the host's `MenuItemButton` and 14px outline icons.
+- Opening uses `session/openWorkspacePath`, the Session Controller's existing
+  native opener. It verifies the path against the composed filesystem and does
+  not require the path to be a registered Workspace, so a log directory under
+  `$DSH_HOME` opens the same way.
+- The records directory follows the session-log backends' documented layout:
+  `<root>/--<normalized cwd>--/<encoded session id>/`. The normalization and the
+  id encoding are mirrored in `client.js` (separators collapse to `-`, unsafe
+  code units become `~XXXX`, the key is wrapped in `--` and bounded).
+- The log root reaches the Client as this row's volatile `sessionsRoot` Config
+  value through the Client settings form; its default is computed in the Host
+  process as `$DSH_HOME/sessions`. Set it in the row config for a custom root.
+- Both rows hide when `session/canOpenWorkspacePath` reports no native opener
+  (for example a plain remote browser). A missing folder, missing `cwd`, or a
+  Host refusal raises one transient notice from `shell.overlay` naming the path
+  and the reason.
+
+The Host half owns no state, process handling, or file I/O.
+
+## Development
+
+The plugin is a git repository at this directory. Install it into the desktop
+profile by pointing `plugin_manager` `install_bundle` at this absolute path;
+the profile links the directory, so a commit is all that is needed to record a
+version.

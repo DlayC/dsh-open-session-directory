@@ -1,8 +1,18 @@
 # Bundle layer for dsh-open-session-folder.
 #
 # The row exists so the package is active in the profile; the feature itself is
-# the Client half, which adds one row to every Session's "..." menu. The Host
-# half owns no state and declares no Config.
+# the Client half, which adds two rows to every Session's "..." menu. The Host
+# half owns no state: it only declares the `sessionsRoot` Config field whose
+# default is computed there as `$DSH_HOME/sessions`, and which the Client reads
+# through the settings form.
+#
+# Override the log root on deployments that store session logs elsewhere:
+#
+#   - insert:
+#       - id: open-session-folder
+#         name: dsh-open-session-folder
+#         config:
+#           sessionsRoot: 'D:\my-session-logs'
 - insert:
     - id: open-session-folder
       name: dsh-open-session-folder
